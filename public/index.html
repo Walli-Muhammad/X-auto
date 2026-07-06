@@ -1,0 +1,1186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>X Automation — Admin Panel</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:          #07070f;
+      --bg2:         #0d0d1a;
+      --surface:     rgba(255,255,255,0.038);
+      --surface-h:   rgba(255,255,255,0.06);
+      --border:      rgba(255,255,255,0.07);
+      --border-a:    rgba(99,102,241,0.45);
+      --accent:      #6366f1;
+      --accent2:     #a855f7;
+      --grad:        linear-gradient(135deg,#6366f1,#a855f7);
+      --grad-btn:    linear-gradient(135deg,#6366f1 0%,#8b5cf6 100%);
+      --success:     #10b981;
+      --warn:        #f59e0b;
+      --danger:      #ef4444;
+      --info:        #38bdf8;
+      --text:        #e2e8f0;
+      --muted:       #64748b;
+      --subtle:      #1e293b;
+      --sidebar-w:   220px;
+      --radius:      12px;
+      --radius-sm:   8px;
+      --font:        'Inter', sans-serif;
+      --mono:        'JetBrains Mono', 'Fira Code', monospace;
+      --glow:        0 0 24px rgba(99,102,241,0.18);
+    }
+
+    body {
+      font-family: var(--font);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      overflow: hidden;
+    }
+
+    /* ── Sidebar ────────────────────────────────────────────────────────── */
+    .sidebar {
+      width: var(--sidebar-w);
+      min-height: 100vh;
+      background: var(--bg2);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0; left: 0; bottom: 0;
+      z-index: 100;
+    }
+    .sidebar-logo {
+      padding: 22px 20px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .sidebar-logo h1 {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      background: var(--grad);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .sidebar-logo p { font-size: 11px; color: var(--muted); margin-top: 2px; }
+
+    .nav { padding: 12px 10px; flex: 1; }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 12px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 13.5px;
+      font-weight: 500;
+      transition: all 0.15s ease;
+      border: 1px solid transparent;
+      margin-bottom: 2px;
+    }
+    .nav-item:hover { color: var(--text); background: var(--surface); }
+    .nav-item.active {
+      color: #fff;
+      background: rgba(99,102,241,0.12);
+      border-color: rgba(99,102,241,0.25);
+    }
+    .nav-icon { font-size: 16px; width: 20px; text-align: center; }
+
+    .sidebar-footer {
+      padding: 14px 16px;
+      border-top: 1px solid var(--border);
+      font-size: 12px;
+    }
+    .status-dot {
+      display: inline-block;
+      width: 7px; height: 7px;
+      border-radius: 50%;
+      margin-right: 6px;
+      background: var(--success);
+      box-shadow: 0 0 6px var(--success);
+    }
+    .sidebar-footer span { color: var(--muted); }
+
+    /* ── Main content ───────────────────────────────────────────────────── */
+    .content {
+      margin-left: var(--sidebar-w);
+      flex: 1;
+      overflow-y: auto;
+      height: 100vh;
+      padding: 28px 32px;
+      background: var(--bg);
+    }
+
+    .section { display: none; }
+    .section.active { display: block; }
+
+    .page-header { margin-bottom: 24px; }
+    .page-header h2 { font-size: 20px; font-weight: 700; letter-spacing: -0.4px; }
+    .page-header p { font-size: 13.5px; color: var(--muted); margin-top: 4px; }
+
+    /* ── Cards ──────────────────────────────────────────────────────────── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+    }
+    .card-title {
+      font-size: 12px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--muted);
+      margin-bottom: 12px;
+    }
+
+    /* ── Stat grid ──────────────────────────────────────────────────────── */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+      margin-bottom: 22px;
+    }
+    .stat-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      transition: border-color 0.2s;
+    }
+    .stat-card:hover { border-color: var(--border-a); }
+    .stat-label { font-size: 11.5px; color: var(--muted); font-weight: 500; margin-bottom: 8px; }
+    .stat-value { font-size: 24px; font-weight: 700; letter-spacing: -0.5px; }
+    .stat-sub { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+
+    /* ── Grid layouts ───────────────────────────────────────────────────── */
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
+    /* ── Badges ─────────────────────────────────────────────────────────── */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 3px 9px;
+      border-radius: 20px;
+      font-size: 11.5px;
+      font-weight: 600;
+    }
+    .badge-indigo { background: rgba(99,102,241,0.14); color: #818cf8; border: 1px solid rgba(99,102,241,0.25); }
+    .badge-green  { background: rgba(16,185,129,0.14); color: #34d399; border: 1px solid rgba(16,185,129,0.25); }
+    .badge-orange { background: rgba(245,158,11,0.14); color: #fbbf24; border: 1px solid rgba(245,158,11,0.25); }
+    .badge-red    { background: rgba(239,68,68,0.14);  color: #f87171; border: 1px solid rgba(239,68,68,0.25);  }
+    .badge-blue   { background: rgba(56,189,248,0.14); color: #7dd3fc; border: 1px solid rgba(56,189,248,0.25); }
+    .badge-purple { background: rgba(168,85,247,0.14); color: #c084fc; border: 1px solid rgba(168,85,247,0.25); }
+
+    /* ── Buttons ────────────────────────────────────────────────────────── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 9px 18px;
+      border-radius: var(--radius-sm);
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s ease;
+      font-family: var(--font);
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-primary {
+      background: var(--grad-btn);
+      color: #fff;
+      box-shadow: 0 0 0 0 rgba(99,102,241,0);
+    }
+    .btn-primary:hover:not(:disabled) {
+      box-shadow: 0 0 20px rgba(99,102,241,0.35);
+      transform: translateY(-1px);
+    }
+    .btn-outline {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-outline:hover:not(:disabled) { background: var(--surface-h); border-color: var(--border-a); }
+    .btn-danger { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
+    .btn-danger:hover:not(:disabled) { background: rgba(239,68,68,0.22); }
+    .btn-success { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+    .btn-success:hover:not(:disabled) { background: rgba(16,185,129,0.22); }
+    .btn-sm { padding: 5px 12px; font-size: 12px; }
+    .btn-icon { padding: 7px 10px; }
+    .btn-group { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* ── Form controls ──────────────────────────────────────────────────── */
+    .form-group { margin-bottom: 16px; }
+    .form-label {
+      display: block;
+      font-size: 12.5px;
+      font-weight: 600;
+      color: var(--muted);
+      margin-bottom: 6px;
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+    .form-input, .form-select, .form-textarea {
+      width: 100%;
+      background: rgba(255,255,255,0.04);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text);
+      font-size: 13.5px;
+      font-family: var(--font);
+      padding: 9px 12px;
+      outline: none;
+      transition: border-color 0.15s;
+    }
+    .form-input:focus, .form-select:focus, .form-textarea:focus {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 3px rgba(99,102,241,0.12);
+    }
+    .form-input::placeholder { color: var(--muted); }
+    .form-select { cursor: pointer; appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748b' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 10px center; padding-right: 32px; }
+    .form-select option { background: #1a1a2e; color: var(--text); }
+    .form-textarea { resize: vertical; min-height: 80px; }
+    .form-hint { font-size: 11.5px; color: var(--muted); margin-top: 4px; }
+
+    /* Password field with toggle */
+    .input-wrap { position: relative; }
+    .input-wrap .form-input { padding-right: 40px; }
+    .input-eye {
+      position: absolute;
+      right: 10px; top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+      color: var(--muted);
+      font-size: 15px;
+      user-select: none;
+    }
+    .input-eye:hover { color: var(--text); }
+
+    /* Range slider */
+    .form-range {
+      width: 100%;
+      accent-color: var(--accent);
+      cursor: pointer;
+    }
+    .range-labels { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); margin-top: 4px; }
+
+    /* Toggle switch */
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .toggle-row:last-child { border-bottom: none; }
+    .toggle-info { flex: 1; }
+    .toggle-info strong { font-size: 13.5px; font-weight: 600; display: block; }
+    .toggle-info span { font-size: 12px; color: var(--muted); }
+    .toggle {
+      position: relative;
+      width: 40px; height: 22px;
+      flex-shrink: 0;
+    }
+    .toggle input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--subtle);
+      border-radius: 22px;
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 2px; top: 2px;
+      background: var(--muted);
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+    .toggle input:checked + .toggle-slider { background: rgba(99,102,241,0.25); border-color: var(--accent); }
+    .toggle input:checked + .toggle-slider::before { background: var(--accent); transform: translateX(18px); }
+
+    /* ── Log terminal ───────────────────────────────────────────────────── */
+    .terminal {
+      background: #05050c;
+      border: 1px solid rgba(99,102,241,0.2);
+      border-radius: var(--radius);
+      padding: 16px;
+      font-family: var(--mono);
+      font-size: 12.5px;
+      line-height: 1.7;
+      min-height: 320px;
+      max-height: 480px;
+      overflow-y: auto;
+      color: #94a3b8;
+    }
+    .terminal:empty::before { content: 'Logs will appear here...'; color: var(--muted); font-style: italic; }
+    .log-line { display: flex; gap: 12px; }
+    .log-ts { color: #334155; flex-shrink: 0; }
+    .log-msg { color: #94a3b8; word-break: break-word; }
+    .log-err .log-msg { color: #f87171; }
+    .log-done .log-msg { color: #34d399; font-weight: 600; }
+    .log-fail .log-msg { color: #f87171; font-weight: 600; }
+    .log-info .log-msg { color: #7dd3fc; }
+
+    /* ── Run status bar ─────────────────────────────────────────────────── */
+    .run-controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .run-status {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .pulse {
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+    }
+    .pulse.running { background: var(--accent); animation: pulse 1.2s ease infinite; }
+    .pulse.success { background: var(--success); }
+    .pulse.error { background: var(--danger); }
+    @keyframes pulse {
+      0%,100% { box-shadow: 0 0 0 0 rgba(99,102,241,0.6); }
+      50%      { box-shadow: 0 0 0 6px rgba(99,102,241,0); }
+    }
+
+    /* ── Draft preview card ─────────────────────────────────────────────── */
+    .draft-box {
+      background: rgba(99,102,241,0.06);
+      border: 1px solid rgba(99,102,241,0.2);
+      border-radius: var(--radius);
+      padding: 16px;
+      font-size: 14.5px;
+      line-height: 1.65;
+      color: var(--text);
+      min-height: 60px;
+      font-family: var(--font);
+      display: none;
+    }
+    .draft-box.visible { display: block; }
+    .draft-meta { margin-top: 10px; display: flex; gap: 8px; flex-wrap: wrap; }
+
+    /* ── History ────────────────────────────────────────────────────────── */
+    .history-item {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      display: flex;
+      gap: 14px;
+      align-items: flex-start;
+      margin-bottom: 8px;
+      transition: border-color 0.15s;
+    }
+    .history-item:hover { border-color: rgba(99,102,241,0.25); }
+    .history-item.type-reply { border-left: 3px solid var(--success); }
+    .history-item.type-retweet { border-left: 3px solid var(--warn); }
+    .history-item.type-original { border-left: 3px solid var(--accent); }
+    .history-text { flex: 1; font-size: 13.5px; line-height: 1.55; color: var(--text); }
+    .history-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .history-empty { text-align: center; padding: 48px; color: var(--muted); font-size: 14px; }
+    .history-empty .history-empty-icon { font-size: 40px; margin-bottom: 12px; }
+
+    /* ── Session ────────────────────────────────────────────────────────── */
+    .session-status-card {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 20px;
+      margin-bottom: 20px;
+    }
+    .session-icon { font-size: 36px; }
+    .session-info h3 { font-size: 15px; font-weight: 700; }
+    .session-info p { font-size: 13px; color: var(--muted); margin-top: 3px; }
+
+    /* ── Alert ──────────────────────────────────────────────────────────── */
+    .alert {
+      border-radius: var(--radius-sm);
+      padding: 12px 16px;
+      font-size: 13px;
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      margin-bottom: 14px;
+    }
+    .alert-info  { background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.2); color: #7dd3fc; }
+    .alert-warn  { background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.2); color: #fbbf24; }
+    .alert-success { background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); color: #34d399; }
+
+    /* ── Divider ────────────────────────────────────────────────────────── */
+    .divider { height: 1px; background: var(--border); margin: 20px 0; }
+
+    /* ── Keys status ────────────────────────────────────────────────────── */
+    .key-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 13.5px;
+    }
+    .key-row:last-child { border-bottom: none; }
+    .key-dot { width: 8px; height: 8px; border-radius: 50%; margin-right: 8px; display: inline-block; }
+    .key-dot.ok { background: var(--success); box-shadow: 0 0 6px var(--success); }
+    .key-dot.missing { background: var(--danger); }
+
+    /* ── Responsive ─────────────────────────────────────────────────────── */
+    @media (max-width: 900px) {
+      .stats-grid { grid-template-columns: repeat(2, 1fr); }
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ── Sidebar ──────────────────────────────────────────────────────────── -->
+<nav class="sidebar">
+  <div class="sidebar-logo">
+    <h1>✦ X Automation</h1>
+    <p>Admin Panel</p>
+  </div>
+  <div class="nav">
+    <div class="nav-item active" data-section="dashboard" onclick="showSection('dashboard')">
+      <span class="nav-icon">⚡</span> Dashboard
+    </div>
+    <div class="nav-item" data-section="configure" onclick="showSection('configure')">
+      <span class="nav-icon">⚙️</span> Configure
+    </div>
+    <div class="nav-item" data-section="run" onclick="showSection('run')">
+      <span class="nav-icon">🚀</span> Run
+    </div>
+    <div class="nav-item" data-section="history" onclick="showSection('history')">
+      <span class="nav-icon">📜</span> History
+    </div>
+    <div class="nav-item" data-section="session" onclick="showSection('session')">
+      <span class="nav-icon">🔐</span> Session
+    </div>
+  </div>
+  <div class="sidebar-footer">
+    <span class="status-dot" id="serverDot"></span>
+    <span id="serverStatus">Panel online</span>
+  </div>
+</nav>
+
+<!-- ── Main Content ──────────────────────────────────────────────────────── -->
+<main class="content">
+
+  <!-- ── Dashboard ──────────────────────────────────────────────────────── -->
+  <section id="dashboard" class="section active">
+    <div class="page-header">
+      <h2>Dashboard</h2>
+      <p>System overview and quick actions.</p>
+    </div>
+
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">Posting Mode</div>
+        <div class="stat-value" id="dashMode" style="font-size:18px;margin-top:4px">—</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Total Posts</div>
+        <div class="stat-value" id="dashTotal">—</div>
+        <div class="stat-sub">in history</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">Session</div>
+        <div class="stat-value" id="dashSession" style="font-size:16px;margin-top:4px">—</div>
+        <div class="stat-sub" id="dashSessionAge"></div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-label">API Keys</div>
+        <div class="stat-value" id="dashKeys" style="font-size:16px;margin-top:4px">—</div>
+        <div class="stat-sub" id="dashKeysSub"></div>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="card">
+        <div class="card-title">Quick Actions</div>
+        <div class="btn-group">
+          <button class="btn btn-primary" onclick="showSection('run')">🚀 Run Now</button>
+          <button class="btn btn-outline" onclick="showSection('configure')">⚙️ Configure</button>
+          <button class="btn btn-outline" onclick="showSection('session')">🔐 Auth</button>
+        </div>
+        <div style="margin-top:14px">
+          <div class="alert alert-info">
+            <span>ℹ️</span>
+            <span>Running from the panel automatically disables the terminal HITL prompt — clicking <strong>Run</strong> is your confirmation.</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Current Config</div>
+        <div id="dashConfigSummary" style="font-size:13px;color:var(--muted);line-height:2">Loading...</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Recent Posts</div>
+      <div id="dashRecent">Loading...</div>
+    </div>
+  </section>
+
+  <!-- ── Configure ──────────────────────────────────────────────────────── -->
+  <section id="configure" class="section">
+    <div class="page-header">
+      <h2>Configure</h2>
+      <p>Adjust runtime settings. Changes are written directly to your <code style="font-family:var(--mono);background:var(--subtle);padding:1px 5px;border-radius:4px;font-size:12px">.env</code> file.</p>
+    </div>
+
+    <div class="grid-2">
+      <!-- Left column: Behavior -->
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">Behavior</div>
+
+          <div class="form-group">
+            <label class="form-label">Posting Mode</label>
+            <select class="form-select" id="cfgMode" onchange="onModeChange()">
+              <option value="ORIGINAL_POST">📝 Original Post — new tweet from scratch</option>
+              <option value="REPLY">💬 Reply — respond to target handles</option>
+              <option value="RETWEET">🔁 Retweet — repost target handles</option>
+            </select>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Topic</label>
+            <input class="form-input" type="text" id="cfgTopic" placeholder="e.g. AI and software engineering" />
+            <div class="form-hint">The subject fed to Serper search + LLM for grounding.</div>
+          </div>
+
+          <div class="form-group">
+            <label class="form-label">Tone / Persona</label>
+            <select class="form-select" id="cfgTone">
+              <option value="pragmatic">⚡ Pragmatic — direct builder, zero fluff</option>
+              <option value="tech-founder">🔭 Tech-Founder — visionary, opinionated</option>
+              <option value="cynical">😒 Cynical — sardonic, skeptical of hype</option>
+              <option value="educational">📚 Educational — clear, generous with knowledge</option>
+              <option value="provocative">🔥 Provocative — bold takes, debate-starting</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Target handles (shown only for REPLY/RETWEET) -->
+        <div class="card" id="cfgHandlesCard" style="display:none;margin-bottom:16px">
+          <div class="card-title">Target Handles</div>
+          <div class="form-group" style="margin-bottom:0">
+            <input class="form-input" type="text" id="cfgHandles"
+              placeholder="sama,karpathy,levelsio  (no @ required)" />
+            <div class="form-hint">Comma-separated. The engine picks 2–3 randomly per session.</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right column: Settings -->
+      <div>
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">Post Settings</div>
+
+          <div class="form-group">
+            <label class="form-label">Max Post Length — <strong id="cfgLenLabel">240</strong> chars</label>
+            <input class="form-range" type="range" id="cfgMaxLen"
+              min="100" max="280" value="240"
+              oninput="document.getElementById('cfgLenLabel').textContent=this.value" />
+            <div class="range-labels"><span>100</span><span>280 (X limit)</span></div>
+          </div>
+        </div>
+
+        <div class="card" style="margin-bottom:16px">
+          <div class="card-title">Safety</div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <strong>HITL (terminal runs)</strong>
+              <span>Show draft preview + [y/n] prompt before browser opens.</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="cfgHitl" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+          <div class="toggle-row">
+            <div class="toggle-info">
+              <strong>Headless Browser</strong>
+              <span>Less authentic fingerprint — keep off for safety.</span>
+            </div>
+            <label class="toggle">
+              <input type="checkbox" id="cfgHeadless" />
+              <span class="toggle-slider"></span>
+            </label>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card" style="margin-bottom:16px">
+      <div class="card-title">🔑 API Keys</div>
+      <div class="alert alert-warn" style="margin-bottom:14px">
+        <span>⚠️</span>
+        <span>Keys are stored in your local <code style="font-family:var(--mono)">.env</code> file (gitignored) and never sent anywhere. Leave blank to keep existing value.</span>
+      </div>
+      <div class="grid-2">
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">DeepInfra Token</label>
+          <div class="input-wrap">
+            <input class="form-input" type="password" id="cfgDeepinfra" placeholder="Leave blank to keep existing" autocomplete="off" />
+            <span class="input-eye" onclick="toggleEye('cfgDeepinfra',this)">👁</span>
+          </div>
+          <div class="form-hint" id="cfgDeepinfraStatus">Checking...</div>
+        </div>
+        <div class="form-group" style="margin-bottom:0">
+          <label class="form-label">Serper API Key</label>
+          <div class="input-wrap">
+            <input class="form-input" type="password" id="cfgSerper" placeholder="Leave blank to keep existing" autocomplete="off" />
+            <span class="input-eye" onclick="toggleEye('cfgSerper',this)">👁</span>
+          </div>
+          <div class="form-hint" id="cfgSerperStatus">Checking...</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="btn-group">
+      <button class="btn btn-primary" onclick="saveConfig()">💾 Save Configuration</button>
+      <button class="btn btn-outline" onclick="loadConfig()">↺ Reload from .env</button>
+    </div>
+    <div id="cfgSaveMsg" style="margin-top:10px;font-size:13px;display:none"></div>
+  </section>
+
+  <!-- ── Run ────────────────────────────────────────────────────────────── -->
+  <section id="run" class="section">
+    <div class="page-header">
+      <h2>Run</h2>
+      <p>Generate and post content. Live logs stream directly from the automation engine.</p>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="card">
+        <div class="card-title">Step 1 — Preview Draft (optional)</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+          Generate a tweet draft using the LLM + Serper pipeline without opening the browser. Review it before committing to a run.
+        </p>
+        <button class="btn btn-outline" id="previewBtn" onclick="previewDraft()">🔎 Generate Preview</button>
+        <div class="draft-box" id="draftBox"></div>
+        <div id="draftMeta" class="draft-meta" style="display:none"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">Step 2 — Execute</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px">
+          Launches the browser with your saved session and runs the full posting pipeline. HITL is bypassed — clicking Run is your approval.
+        </p>
+        <div class="run-controls">
+          <button class="btn btn-primary" id="runBtn" onclick="startRun()">▶ Run Automation</button>
+          <button class="btn btn-danger" id="killBtn" onclick="killRun()" style="display:none">⬛ Kill Process</button>
+          <div class="run-status">
+            <div class="pulse" id="runPulse"></div>
+            <span id="runStatusText">Idle</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+        <div class="card-title" style="margin-bottom:0">Live Log</div>
+        <button class="btn btn-outline btn-sm" onclick="clearLog()">Clear</button>
+      </div>
+      <div class="terminal" id="logTerminal"></div>
+    </div>
+  </section>
+
+  <!-- ── History ────────────────────────────────────────────────────────── -->
+  <section id="history" class="section">
+    <div class="page-header">
+      <h2>History</h2>
+      <p>All previously posted tweets, replies, and retweets logged for deduplication.</p>
+    </div>
+
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+      <div style="display:flex;align-items:center;gap:10px">
+        <input class="form-input" type="text" id="histSearch" placeholder="🔍  Filter posts..."
+          oninput="filterHistory()" style="width:220px;padding:7px 12px" />
+        <span class="badge badge-indigo" id="histCount">0 entries</span>
+      </div>
+      <button class="btn btn-danger btn-sm" onclick="clearHistory()">🗑 Clear All</button>
+    </div>
+
+    <div id="historyList">
+      <div class="history-empty">
+        <div class="history-empty-icon">📭</div>
+        <div>No posts yet. Run the automation to generate content.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Session ────────────────────────────────────────────────────────── -->
+  <section id="session" class="section">
+    <div class="page-header">
+      <h2>Session</h2>
+      <p>Manage your Playwright browser session for X login (Google OAuth).</p>
+    </div>
+
+    <div class="session-status-card" id="sessionCard">
+      <div class="session-icon" id="sessionIcon">🔐</div>
+      <div class="session-info">
+        <h3 id="sessionTitle">Checking session...</h3>
+        <p id="sessionSub">Please wait</p>
+      </div>
+      <div style="margin-left:auto">
+        <span class="badge" id="sessionBadge">—</span>
+      </div>
+    </div>
+
+    <div class="grid-2" style="margin-bottom:16px">
+      <div class="card">
+        <div class="card-title">Generate / Refresh Session</div>
+        <p style="font-size:13px;color:var(--muted);margin-bottom:14px;line-height:1.6">
+          Clicking <strong>Open Auth Browser</strong> launches a headful Chromium window. Log in to X with Google, then click <strong>I've Logged In</strong> below.
+        </p>
+        <div class="btn-group" style="margin-bottom:14px">
+          <button class="btn btn-primary" id="authBtn" onclick="startAuth()">🌐 Open Auth Browser</button>
+          <button class="btn btn-success" id="authConfirmBtn" onclick="confirmAuth()" style="display:none">✅ I've Logged In</button>
+          <button class="btn btn-danger btn-sm" id="authKillBtn" onclick="killAuth()" style="display:none">Stop</button>
+        </div>
+        <div class="terminal" id="authLog" style="min-height:140px;max-height:200px"></div>
+      </div>
+
+      <div class="card">
+        <div class="card-title">How It Works</div>
+        <ol style="font-size:13px;color:var(--muted);line-height:2.2;padding-left:18px">
+          <li>Click <strong style="color:var(--text)">Open Auth Browser</strong></li>
+          <li>A Chrome window opens — log in with your Google account</li>
+          <li>Once you're on X home, click <strong style="color:var(--text)">I've Logged In</strong></li>
+          <li>The session is saved to <code style="font-family:var(--mono);font-size:11.5px;background:var(--subtle);padding:1px 5px;border-radius:3px">auth/session.json</code></li>
+          <li>Sessions typically last several weeks</li>
+        </ol>
+        <div class="alert alert-warn" style="margin-top:14px">
+          <span>⚠️</span>
+          <span><code style="font-family:var(--mono);font-size:11.5px">auth/session.json</code> contains live login tokens and is gitignored. Never commit it.</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let historyData = [];
+let runEventSource = null;
+let authEventSource = null;
+let runActive = false;
+let authActive = false;
+
+// ── Section navigation ───────────────────────────────────────────────────────
+function showSection(name) {
+  document.querySelectorAll('.section').forEach(s => s.classList.toggle('active', s.id === name));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.toggle('active', n.dataset.section === name));
+  if (name === 'history') loadHistory();
+  if (name === 'session') checkSession();
+  if (name === 'dashboard') refreshDashboard();
+}
+
+// ── Utility ──────────────────────────────────────────────────────────────────
+function toggleEye(id, el) {
+  const inp = document.getElementById(id);
+  if (!inp) return;
+  inp.type = inp.type === 'password' ? 'text' : 'password';
+  el.textContent = inp.type === 'password' ? '👁' : '🙈';
+}
+
+function modeBadge(mode) {
+  const map = {
+    ORIGINAL_POST: '<span class="badge badge-indigo">📝 Original Post</span>',
+    REPLY:         '<span class="badge badge-green">💬 Reply</span>',
+    RETWEET:       '<span class="badge badge-orange">🔁 Retweet</span>',
+  };
+  return map[mode] || `<span class="badge badge-indigo">${mode}</span>`;
+}
+
+function historyTypeClass(text) {
+  if (text.startsWith('[REPLY')) return 'type-reply';
+  if (text.startsWith('[RETWEET')) return 'type-retweet';
+  return 'type-original';
+}
+
+// ── Config ───────────────────────────────────────────────────────────────────
+async function loadConfig() {
+  const r = await fetch('/api/config').then(r => r.json());
+  const c = r.config || {};
+  const keys = r.keysConfigured || {};
+
+  document.getElementById('cfgMode').value   = c.MODE   || 'ORIGINAL_POST';
+  document.getElementById('cfgTopic').value  = c.TOPIC  || '';
+  document.getElementById('cfgTone').value   = c.TONE_STYLE || 'pragmatic';
+  const len = parseInt(c.TWEET_MAX_LENGTH || '240', 10);
+  document.getElementById('cfgMaxLen').value = len;
+  document.getElementById('cfgLenLabel').textContent = len;
+  document.getElementById('cfgHandles').value = c.TARGET_HANDLES || '';
+  document.getElementById('cfgHitl').checked     = (c.HUMAN_IN_THE_LOOP || 'true') === 'true';
+  document.getElementById('cfgHeadless').checked  = (c.HEADLESS || 'false') === 'true';
+
+  // Key status indicators
+  const diStatus  = document.getElementById('cfgDeepinfraStatus');
+  const srStatus  = document.getElementById('cfgSerperStatus');
+  diStatus.textContent = keys.deepinfra  ? '✅ Key is set' : '❌ Not set — add below';
+  diStatus.style.color = keys.deepinfra  ? 'var(--success)' : 'var(--danger)';
+  srStatus.textContent = keys.serper     ? '✅ Key is set' : '❌ Not set — add below';
+  srStatus.style.color = keys.serper     ? 'var(--success)' : 'var(--danger)';
+
+  onModeChange();
+  return { c, keys };
+}
+
+function onModeChange() {
+  const mode = document.getElementById('cfgMode').value;
+  const handlesCard = document.getElementById('cfgHandlesCard');
+  handlesCard.style.display = (mode !== 'ORIGINAL_POST') ? 'block' : 'none';
+}
+
+async function saveConfig() {
+  const btn = event.target;
+  btn.disabled = true;
+  btn.textContent = 'Saving...';
+
+  const body = {
+    MODE: document.getElementById('cfgMode').value,
+    TOPIC: document.getElementById('cfgTopic').value,
+    TONE_STYLE: document.getElementById('cfgTone').value,
+    TWEET_MAX_LENGTH: document.getElementById('cfgMaxLen').value,
+    TARGET_HANDLES: document.getElementById('cfgHandles').value,
+    HUMAN_IN_THE_LOOP: document.getElementById('cfgHitl').checked ? 'true' : 'false',
+    HEADLESS: document.getElementById('cfgHeadless').checked ? 'true' : 'false',
+  };
+
+  await fetch('/api/config', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+
+  // Save API keys if provided
+  const di = document.getElementById('cfgDeepinfra').value.trim();
+  const sr = document.getElementById('cfgSerper').value.trim();
+  if (di || sr) {
+    await fetch('/api/config/keys', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deepinfraToken: di, serperApiKey: sr }),
+    });
+    document.getElementById('cfgDeepinfra').value = '';
+    document.getElementById('cfgSerper').value = '';
+  }
+
+  const msg = document.getElementById('cfgSaveMsg');
+  msg.style.display = 'block';
+  msg.style.color = 'var(--success)';
+  msg.textContent = '✅ Configuration saved to .env successfully.';
+  setTimeout(() => { msg.style.display = 'none'; }, 3000);
+
+  btn.disabled = false;
+  btn.textContent = '💾 Save Configuration';
+  loadConfig();
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  const r = await fetch('/api/history').then(r => r.json());
+  historyData = (r.history || []).reverse(); // newest first
+  renderHistory(historyData);
+}
+
+function renderHistory(items) {
+  const el = document.getElementById('historyList');
+  const count = document.getElementById('histCount');
+  count.textContent = `${items.length} entr${items.length === 1 ? 'y' : 'ies'}`;
+
+  if (!items.length) {
+    el.innerHTML = `<div class="history-empty"><div class="history-empty-icon">📭</div><div>No posts yet. Run the automation to generate content.</div></div>`;
+    return;
+  }
+
+  el.innerHTML = items.map((text, i) => {
+    const typeClass = historyTypeClass(text);
+    const typeBadge = text.startsWith('[REPLY') ? '<span class="badge badge-green" style="font-size:10px">REPLY</span>' :
+                      text.startsWith('[RETWEET') ? '<span class="badge badge-orange" style="font-size:10px">RETWEET</span>' :
+                      '<span class="badge badge-indigo" style="font-size:10px">ORIGINAL</span>';
+    // Reverse index maps to real array index
+    const realIndex = historyData.length - 1 - i;
+    return `<div class="history-item ${typeClass}">
+      <div class="history-text">${typeBadge} <span style="margin-left:6px">${escHtml(text)}</span></div>
+      <div class="history-actions">
+        <button class="btn btn-danger btn-sm btn-icon" onclick="deleteHistory(${realIndex})" title="Delete">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filterHistory() {
+  const q = document.getElementById('histSearch').value.toLowerCase();
+  renderHistory(q ? historyData.filter(t => t.toLowerCase().includes(q)) : historyData);
+}
+
+async function deleteHistory(index) {
+  await fetch(`/api/history/${index}`, { method: 'DELETE' });
+  loadHistory();
+}
+
+async function clearHistory() {
+  if (!confirm('Delete all history entries?')) return;
+  await fetch('/api/history', { method: 'DELETE' });
+  loadHistory();
+}
+
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Session ──────────────────────────────────────────────────────────────────
+async function checkSession() {
+  const r = await fetch('/api/session').then(r => r.json());
+  const icon  = document.getElementById('sessionIcon');
+  const title = document.getElementById('sessionTitle');
+  const sub   = document.getElementById('sessionSub');
+  const badge = document.getElementById('sessionBadge');
+
+  if (r.exists) {
+    icon.textContent  = '✅';
+    title.textContent = 'Session Active';
+    sub.textContent   = `File: ${r.sessionPath}`;
+    badge.className   = 'badge badge-green';
+    badge.textContent = r.age ? `Updated ${r.age}` : 'Recent';
+  } else {
+    icon.textContent  = '❌';
+    title.textContent = 'No Session Found';
+    sub.textContent   = 'Run the auth browser to generate a session.';
+    badge.className   = 'badge badge-red';
+    badge.textContent = 'Missing';
+  }
+}
+
+// Auth process
+function addAuthLog(type, msg) {
+  const term = document.getElementById('authLog');
+  const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const div = document.createElement('div');
+  div.className = `log-line log-${type}`;
+  div.innerHTML = `<span class="log-ts">${ts}</span><span class="log-msg">${escHtml(msg)}</span>`;
+  term.appendChild(div);
+  term.scrollTop = term.scrollHeight;
+}
+
+async function startAuth() {
+  if (authActive) return;
+  document.getElementById('authLog').innerHTML = '';
+  document.getElementById('authBtn').disabled = true;
+  document.getElementById('authConfirmBtn').style.display = 'inline-flex';
+  document.getElementById('authKillBtn').style.display = 'inline-flex';
+  authActive = true;
+
+  addAuthLog('info', 'Launching Chromium browser...');
+
+  authEventSource = new EventSource('/api/auth');
+  authEventSource.addEventListener('log',  e => addAuthLog('log',  JSON.parse(e.data).msg));
+  authEventSource.addEventListener('err',  e => addAuthLog('err',  JSON.parse(e.data).msg));
+  authEventSource.addEventListener('done', e => {
+    addAuthLog('done', 'Session saved! ✓');
+    finishAuth();
+    checkSession();
+  });
+  authEventSource.addEventListener('fail', e => {
+    addAuthLog('err', JSON.parse(e.data).msg);
+    finishAuth();
+  });
+}
+
+async function confirmAuth() {
+  addAuthLog('info', 'Sending confirmation...');
+  await fetch('/api/auth/confirm', { method: 'POST' });
+}
+
+async function killAuth() {
+  if (authEventSource) authEventSource.close();
+  finishAuth();
+}
+
+function finishAuth() {
+  authActive = false;
+  authEventSource?.close();
+  authEventSource = null;
+  document.getElementById('authBtn').disabled = false;
+  document.getElementById('authConfirmBtn').style.display = 'none';
+  document.getElementById('authKillBtn').style.display = 'none';
+}
+
+// ── Run ───────────────────────────────────────────────────────────────────────
+function addLog(type, msg) {
+  const term = document.getElementById('logTerminal');
+  const ts = new Date().toLocaleTimeString('en-US', { hour12: false });
+  const div = document.createElement('div');
+  div.className = `log-line log-${type}`;
+  div.innerHTML = `<span class="log-ts">${ts}</span><span class="log-msg">${escHtml(msg)}</span>`;
+  term.appendChild(div);
+  term.scrollTop = term.scrollHeight;
+}
+
+function setRunState(active, status = 'Idle', pulseClass = '') {
+  runActive = active;
+  document.getElementById('runBtn').disabled  = active;
+  document.getElementById('killBtn').style.display = active ? 'inline-flex' : 'none';
+  const pulse = document.getElementById('runPulse');
+  pulse.className = `pulse ${pulseClass}`;
+  document.getElementById('runStatusText').textContent = status;
+}
+
+function startRun() {
+  if (runActive) return;
+  document.getElementById('logTerminal').innerHTML = '';
+  setRunState(true, 'Running', 'running');
+
+  addLog('info', '▶ Automation run started...');
+
+  runEventSource = new EventSource('/api/run');
+  runEventSource.addEventListener('log',  e => addLog('log',  JSON.parse(e.data).msg));
+  runEventSource.addEventListener('err',  e => addLog('err',  JSON.parse(e.data).msg));
+  runEventSource.addEventListener('done', e => {
+    addLog('done', JSON.parse(e.data).msg);
+    setRunState(false, 'Success', 'success');
+    loadHistory();
+  });
+  runEventSource.addEventListener('fail', e => {
+    addLog('fail', JSON.parse(e.data).msg);
+    setRunState(false, 'Error', 'error');
+  });
+  runEventSource.onerror = () => {
+    if (runActive) {
+      addLog('err', 'Connection to server lost.');
+      setRunState(false, 'Error', 'error');
+    }
+  };
+}
+
+async function killRun() {
+  await fetch('/api/run/kill', { method: 'POST' });
+  runEventSource?.close();
+  runEventSource = null;
+  setRunState(false, 'Killed', 'error');
+  addLog('err', '⬛ Run killed by user.');
+}
+
+function clearLog() {
+  document.getElementById('logTerminal').innerHTML = '';
+  if (!runActive) setRunState(false, 'Idle', '');
+}
+
+// ── Draft preview ─────────────────────────────────────────────────────────────
+async function previewDraft() {
+  const btn = document.getElementById('previewBtn');
+  const box = document.getElementById('draftBox');
+  const meta = document.getElementById('draftMeta');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generating...';
+  box.classList.remove('visible');
+  meta.style.display = 'none';
+
+  const r = await fetch('/api/preview').then(r => r.json()).catch(() => ({ success: false, error: 'Request failed.' }));
+
+  btn.disabled = false;
+  btn.textContent = '🔎 Generate Preview';
+
+  if (!r.success) {
+    box.textContent = `❌ ${r.error}`;
+    box.classList.add('visible');
+    box.style.borderColor = 'rgba(239,68,68,0.3)';
+    return;
+  }
+
+  box.textContent = r.draft || '(empty draft)';
+  box.style.borderColor = '';
+  box.classList.add('visible');
+
+  meta.style.display = 'flex';
+  meta.innerHTML = [
+    `<span class="badge badge-indigo">${r.draft?.length || 0} chars</span>`,
+    `<span class="badge badge-purple">${r.toneStyle}</span>`,
+    r.hasWebContext ? '<span class="badge badge-green">🌐 Web-grounded</span>' : '<span class="badge badge-orange">⚠️ No web context</span>',
+  ].join('');
+}
+
+// ── Dashboard refresh ─────────────────────────────────────────────────────────
+async function refreshDashboard() {
+  const [cfgRes, histRes, sessRes] = await Promise.all([
+    fetch('/api/config').then(r => r.json()).catch(() => ({})),
+    fetch('/api/history').then(r => r.json()).catch(() => ({ history: [] })),
+    fetch('/api/session').then(r => r.json()).catch(() => ({ exists: false })),
+  ]);
+
+  const c    = cfgRes.config || {};
+  const keys = cfgRes.keysConfigured || {};
+  const hist = histRes.history || [];
+
+  // Stat cards
+  document.getElementById('dashMode').innerHTML = modeBadge(c.MODE || 'ORIGINAL_POST');
+  document.getElementById('dashTotal').textContent = hist.length;
+  document.getElementById('dashSession').textContent = sessRes.exists ? 'Active ✅' : 'Missing ❌';
+  document.getElementById('dashSessionAge').textContent = sessRes.age || '';
+
+  const bothKeys = keys.deepinfra && keys.serper;
+  document.getElementById('dashKeys').textContent = bothKeys ? 'All Set ✅' : '⚠️ Incomplete';
+  document.getElementById('dashKeysSub').textContent = bothKeys
+    ? 'DeepInfra + Serper ready'
+    : `Missing: ${[!keys.deepinfra && 'DeepInfra', !keys.serper && 'Serper'].filter(Boolean).join(', ')}`;
+
+  // Config summary
+  document.getElementById('dashConfigSummary').innerHTML = `
+    <span style="color:var(--muted)">Topic</span> <span style="color:var(--text)">${escHtml(c.TOPIC || '—')}</span><br>
+    <span style="color:var(--muted)">Tone</span>  <span style="color:var(--text)">${c.TONE_STYLE || '—'}</span><br>
+    <span style="color:var(--muted)">Limit</span> <span style="color:var(--text)">${c.TWEET_MAX_LENGTH || 240} chars</span><br>
+    <span style="color:var(--muted)">HITL</span>  <span style="color:var(--text)">${c.HUMAN_IN_THE_LOOP === 'true' ? '✅ On (terminal)' : 'Off'}</span>
+  `;
+
+  // Recent posts (last 3)
+  const recent = [...hist].reverse().slice(0, 3);
+  const recentEl = document.getElementById('dashRecent');
+  if (!recent.length) {
+    recentEl.innerHTML = '<div style="color:var(--muted);font-size:13px;padding:8px 0">No posts yet.</div>';
+  } else {
+    recentEl.innerHTML = recent.map(t => `
+      <div style="border-bottom:1px solid var(--border);padding:10px 0;font-size:13.5px;line-height:1.5">
+        ${historyTypeClass(t) === 'type-reply' ? '<span class="badge badge-green" style="font-size:10px;margin-right:6px">REPLY</span>' :
+          historyTypeClass(t) === 'type-retweet' ? '<span class="badge badge-orange" style="font-size:10px;margin-right:6px">RETWEET</span>' :
+          '<span class="badge badge-indigo" style="font-size:10px;margin-right:6px">ORIGINAL</span>'}
+        ${escHtml(t.slice(0, 120))}${t.length > 120 ? '…' : ''}
+      </div>
+    `).join('');
+  }
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+async function init() {
+  await loadConfig();
+  await refreshDashboard();
+}
+
+init();
+</script>
+</body>
+</html>
