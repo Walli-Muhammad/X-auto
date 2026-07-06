@@ -186,42 +186,54 @@ async function navigateHome(page: Page): Promise<void> {
 async function openComposeBox(page: Page): Promise<string> {
   console.log('[browser] Looking for compose box...');
 
-  // Strategy 1: Click the "What is happening?!" placeholder (home feed)
-  const composeSelectors = [
+  // Give the home feed extra time to fully hydrate before probing the DOM
+  await page.waitForTimeout(3_000);
+
+  // Strategy 1: Wait for the inline compose area ("What is happening?!")
+  const inlineSelectors = [
     '[data-testid="tweetTextarea_0"]',
-    '[aria-label="Tweet text"]',
     '[aria-label="Post text"]',
+    '[aria-label="Tweet text"]',
     '[placeholder="What is happening?!"]',
   ];
 
-  for (const sel of composeSelectors) {
-    const el = await page.$(sel);
-    if (el) {
-      console.log(`[browser] Found compose area via: ${sel}`);
-      await el.click();
-      await gaussianDelay(400, 80, 250, 700);
-      return sel;
+  for (const sel of inlineSelectors) {
+    try {
+      const el = await page.waitForSelector(sel, { timeout: 4_000 });
+      if (el) {
+        console.log(`[browser] Found compose area via: ${sel}`);
+        await el.click();
+        await gaussianDelay(400, 80, 250, 700);
+        return sel;
+      }
+    } catch {
+      // not found within timeout — try next selector
     }
   }
 
-  // Strategy 2: Try the floating compose button (the quill icon on sidebar)
+  // Strategy 2: Click the sidebar compose button (quill / pencil icon)
   const composeButtonSelectors = [
     '[data-testid="SideNav_NewTweet_Button"]',
     '[aria-label="Compose tweet"]',
     '[aria-label="Post"]',
+    'a[href="/compose/tweet"]',
   ];
 
   for (const sel of composeButtonSelectors) {
-    const btn = await page.$(sel);
-    if (btn) {
-      console.log(`[browser] Clicking compose button: ${sel}`);
-      await btn.click();
-      await gaussianDelay(600, 120, 400, 1_000);
+    try {
+      const btn = await page.waitForSelector(sel, { timeout: 4_000 });
+      if (btn) {
+        console.log(`[browser] Clicking compose button: ${sel}`);
+        await btn.click();
+        await gaussianDelay(800, 150, 500, 1_200);
 
-      // Wait for the dialog compose area to appear
-      const dialogSel = '[data-testid="tweetTextarea_0"]';
-      await page.waitForSelector(dialogSel, { timeout: 8_000 });
-      return dialogSel;
+        // Wait for the modal compose textarea to appear
+        const dialogSel = '[data-testid="tweetTextarea_0"]';
+        await page.waitForSelector(dialogSel, { timeout: 10_000 });
+        return dialogSel;
+      }
+    } catch {
+      // not found within timeout — try next selector
     }
   }
 
@@ -232,6 +244,7 @@ async function openComposeBox(page: Page): Promise<string> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+
 //  Submit the tweet
 // ─────────────────────────────────────────────────────────────────────────────
 

@@ -1063,16 +1063,22 @@ function startRun() {
   runEventSource.addEventListener('err',  e => addLog('err',  JSON.parse(e.data).msg));
   runEventSource.addEventListener('done', e => {
     addLog('done', JSON.parse(e.data).msg);
+    runEventSource.close();   // prevent SSE auto-reconnect from triggering a new run
+    runEventSource = null;
     setRunState(false, 'Success', 'success');
     loadHistory();
   });
   runEventSource.addEventListener('fail', e => {
     addLog('fail', JSON.parse(e.data).msg);
+    runEventSource.close();   // prevent SSE auto-reconnect from triggering a new run
+    runEventSource = null;
     setRunState(false, 'Error', 'error');
   });
   runEventSource.onerror = () => {
     if (runActive) {
       addLog('err', 'Connection to server lost.');
+      runEventSource?.close();
+      runEventSource = null;
       setRunState(false, 'Error', 'error');
     }
   };
