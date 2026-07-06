@@ -28,6 +28,9 @@
  */
 
 import readline from 'readline';
+import path from 'path';
+import os from 'os';
+import fs from 'fs';
 import { chromium, Browser, BrowserContext, Page } from 'playwright';
 
 import { config, assertSessionExists } from './config';
@@ -36,6 +39,22 @@ import { loadHistory, isDuplicate, recordTweet } from './history';
 import { gaussianDelay, typeLikeAHuman, lurkOverhead } from './humanizer';
 import { fetchLatestContext } from './search';
 import { runEngagementSession } from './engage';
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Resolve headful Chrome binary — bypasses incomplete Playwright install check
+//  (headless-shell often fails to download on restricted networks, but the
+//  headful chrome.exe is always what we use)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function resolveChromePath(): string | undefined {
+  const win = path.join(
+    os.homedir(),
+    'AppData', 'Local', 'ms-playwright',
+    'chromium-1228', 'chrome-win64', 'chrome.exe'
+  );
+  if (process.platform === 'win32' && fs.existsSync(win)) return win;
+  return undefined;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Viewport pool — real screen resolutions to randomize fingerprint
@@ -98,6 +117,7 @@ async function launchBrowser(): Promise<{
 
   const browser = await chromium.launch({
     headless: config.headless,
+    executablePath: resolveChromePath(), // use already-downloaded chrome.exe directly
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',

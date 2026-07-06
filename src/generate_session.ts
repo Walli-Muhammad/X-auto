@@ -11,9 +11,27 @@
 
 import readline from 'readline';
 import path from 'path';
+import os from 'os';
 import fs from 'fs';
 import { chromium } from 'playwright';
 import dotenv from 'dotenv';
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Resolve the headful Chrome executable that Playwright already downloaded.
+//  We bypass the "all components installed" check because the headless-shell
+//  download keeps failing on some networks — but we only ever run headful anyway.
+// ─────────────────────────────────────────────────────────────────────────────
+
+function resolveChromePath(): string | undefined {
+  // Standard Playwright cache location on Windows
+  const win = path.join(
+    os.homedir(),
+    'AppData', 'Local', 'ms-playwright',
+    'chromium-1228', 'chrome-win64', 'chrome.exe'
+  );
+  if (process.platform === 'win32' && fs.existsSync(win)) return win;
+  return undefined; // fall back to Playwright's own resolution on other OSes
+}
 
 dotenv.config();
 
@@ -58,8 +76,14 @@ async function generateSession(): Promise<void> {
     console.log(`[auth] Created directory: ${SESSION_DIR}`);
   }
 
+  const executablePath = resolveChromePath();
+  if (executablePath) {
+    console.log(`[auth] Using browser: ${executablePath}`);
+  }
+
   const browser = await chromium.launch({
     headless: false,
+    executablePath,          // uses the already-downloaded chrome.exe directly
     args: [
       '--disable-blink-features=AutomationControlled',
       '--no-sandbox',
