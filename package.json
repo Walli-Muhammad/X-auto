@@ -1,0 +1,29 @@
+{
+  "name": "x-automation",
+  "version": "1.0.0",
+  "description": "Local, high-security X (Twitter) automation via Playwright + DeepInfra LLM",
+  "main": "dist/stealth_poster.js",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "ts-node src/stealth_poster.ts",
+    "auth": "ts-node src/generate_session.ts",
+    "configure": "ts-node src/configure.ts",
+    "build": "tsc",
+    "run:built": "node dist/stealth_poster.js",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "inquirer": "^8.2.6",
+    "openai": "^4.52.7",
+    "playwright": "^1.45.2"
+  },
+  "devDependencies": {
+    "@types/inquirer": "^8.2.10",
+    "@types/node": "^20.14.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.5.3"
+  }
+}

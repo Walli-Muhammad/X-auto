@@ -1,0 +1,18 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Environment secrets — NEVER commit these
+.env
+
+# Session tokens — equivalent to a logged-in browser session
+auth/
+
+# TypeScript build info
+*.tsbuildinfo
+
+# OS artifacts
+.DS_Store
+Thumbs.db
