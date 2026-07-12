@@ -38,7 +38,7 @@ import { generateTweet } from './llm';
 import { loadHistory, isDuplicate, recordTweet } from './history';
 import { gaussianDelay, typeLikeAHuman, lurkOverhead } from './humanizer';
 import { fetchLatestContext } from './search';
-import { runEngagementSession } from './engage';
+import { runEngagementSession, discoverFromFeed } from './engage';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Resolve headful Chrome binary — bypasses incomplete Playwright install check
@@ -401,33 +401,46 @@ async function main(): Promise<void> {
   //  BRANCH: REPLY | RETWEET
   // ─────────────────────────────────────────────────────────────────────────────
   else {
-    // Guard: TARGET_HANDLES must be configured for engagement modes
-    if (config.targetHandles.length === 0) {
+    const hasHandles = config.targetHandles.length > 0;
+    const isReply = config.mode === 'REPLY';
+
+    // RETWEET mode always requires explicit handles
+    if (!isReply && !hasHandles) {
       console.error(
-        '\n[engage] ❌ No TARGET_HANDLES configured.\n' +
-          '         Add at least one X handle to .env or run \'npm run configure\'.\n'
+        '\n[engage] ❌ RETWEET mode requires TARGET_HANDLES to be configured.\n' +
+          '         Add at least one X handle in the Configure tab or .env.\n'
       );
       process.exit(1);
     }
 
-    console.log(`[engage] Targets available: ${config.targetHandles.map((h) => '@' + h).join(', ')}\n`);
+    // REPLY mode: if no handles → use feed discovery mode
+    if (isReply && !hasHandles) {
+      console.log('[engage] No TARGET_HANDLES set → switching to Feed Discovery mode.');
+      console.log('[engage] Will scroll home feed and reply to the most relevant tweets.\n');
+    } else {
+      console.log(`[engage] Targets available: ${config.targetHandles.map((h) => '@' + h).join(', ')}\n`);
+    }
 
     const { browser, page } = await launchBrowser();
     let posted: string[] = [];
 
     try {
-      // Validate session before navigating to profiles
+      // Validate session before navigating
       await navigateHome(page);
       await gaussianDelay(1_200, 250, 700, 2_500);
 
-      // Delegate all engagement logic to engage.ts
-      posted = await runEngagementSession(
-        page,
-        config.mode as 'REPLY' | 'RETWEET',
-        history
-      );
+      if (isReply && !hasHandles) {
+        // DISCOVER mode: scroll home feed, find & reply to relevant tweets
+        posted = await discoverFromFeed(page, history);
+      } else {
+        // TARGET mode: visit specific profiles
+        posted = await runEngagementSession(
+          page,
+          config.mode as 'REPLY' | 'RETWEET',
+          history
+        );
+      }
 
-      // Lurk overhead after the session
       await lurkOverhead(page);
     } finally {
       await browser.close();

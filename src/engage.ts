@@ -1,16 +1,20 @@
 /**
- * engage.ts — Community Engagement Engine (Reply / Retweet)
+ * engage.ts — Community Engagement Engine (Reply / Retweet / Feed Discovery)
  *
- * Orchestrates browser-side engagement sessions against a curated list of
- * target X handles. Called from stealth_poster.ts when MODE is REPLY or RETWEET.
+ * Orchestrates browser-side engagement sessions.
+ *
+ * Two operating modes:
+ *  A) TARGET mode  — visits a curated list of TARGET_HANDLES and engages with
+ *                    their latest tweet. Used when TARGET_HANDLES is non-empty.
+ *  B) DISCOVER mode — scrolls the home timeline, scores visible tweets by
+ *                    relevance to config.topic using keyword matching, and
+ *                    replies to the top 2–3. Used when TARGET_HANDLES is empty.
  *
  * Design principles:
  *  - Max MAX_ENGAGEMENTS_PER_SESSION actions per run (2–3, randomly chosen)
- *  - Picks random handles from TARGET_HANDLES each session for variety
- *  - Skips pinned tweets when finding a target to engage with
  *  - All delays are Gaussian (Box-Muller) — never static timeouts
  *  - HUMAN_IN_THE_LOOP gate is always enforced for replies (never skipped)
- *  - All failures degrade gracefully: logs a warning and continues to next handle
+ *  - All failures degrade gracefully: logs a warning and moves on
  */
 
 import readline from 'readline';
@@ -287,11 +291,213 @@ async function replyToTweet(
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  Main engagement session orchestrator
+//  Feed discovery — scroll home timeline and find relevant tweets
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Runs a full engagement session for the given `mode`.
+ * Scores a tweet's text against config.topic.
+ * Simple bag-of-words keyword overlap — fast, no LLM call needed at this stage.
+ * Returns a score 0–1 (higher = more relevant).
+ */
+function scoreTweetRelevance(tweetText: string, topic: string): number {
+  const stopWords = new Set([
+    'a','an','the','and','or','but','in','on','at','to','for','of',
+    'with','is','it','be','this','that','are','was','were','has','have',
+    'by','from','as','not','we','i','you','they','he','she','my','our',
+  ]);
+
+  const tokenise = (s: string): string[] =>
+    s.toLowerCase()
+      .replace(/[^a-z0-9\s]/g, '')
+      .split(/\s+/)
+      .filter((w) => w.length > 2 && !stopWords.has(w));
+
+  const topicTokens = new Set(tokenise(topic));
+  if (topicTokens.size === 0) return 0;
+
+  const tweetTokens = tokenise(tweetText);
+  const matches = tweetTokens.filter((w) => topicTokens.has(w)).length;
+  return matches / topicTokens.size;
+}
+
+interface DiscoveredTweet {
+  article: ElementHandle;
+  text: string;
+  author: string;
+  score: number;
+}
+
+/**
+ * Scrolls the home timeline to discover tweets relevant to config.topic.
+ * Performs `scrollPasses` scroll steps, collecting all visible tweet articles.
+ * Returns up to `maxResults` highest-scoring non-ad, non-own tweets.
+ */
+async function discoverRelevantTweets(
+  page: Page,
+  scrollPasses: number = 4,
+  minScore: number = 0.08,
+  maxResults: number = 5
+): Promise<DiscoveredTweet[]> {
+  console.log('[discover] Scanning home timeline for relevant tweets...');
+
+  // Get our own handle so we skip our own posts
+  let ownHandle = '';
+  try {
+    // The logged-in user's handle appears in the sidebar nav profile link
+    const profileLink = await page.$('a[data-testid="AppTabBar_Profile_Link"]');
+    if (profileLink) {
+      const href = await profileLink.getAttribute('href');
+      if (href) ownHandle = href.replace('/', '').toLowerCase();
+    }
+  } catch { /* best-effort */ }
+
+  const seen = new Set<string>();
+  const collected: DiscoveredTweet[] = [];
+
+  for (let pass = 0; pass < scrollPasses; pass++) {
+    // Collect all currently visible tweet articles
+    const articles = await page.$$('article[data-testid="tweet"]');
+    console.log(`[discover] Pass ${pass + 1}/${scrollPasses} — ${articles.length} articles visible`);
+
+    for (const article of articles) {
+      try {
+        // Extract tweet text
+        const textEl = await article.$('[data-testid="tweetText"]');
+        if (!textEl) continue;
+        const text = (await textEl.innerText()).trim();
+        if (!text || seen.has(text)) continue;
+        seen.add(text);
+
+        // Extract author handle
+        let author = 'unknown';
+        try {
+          const userLink = await article.$('a[role="link"][href*="/"]');
+          if (userLink) {
+            const href = await userLink.getAttribute('href');
+            if (href) author = href.replace('/', '').toLowerCase();
+          }
+        } catch { /* best-effort */ }
+
+        // Skip our own posts
+        if (ownHandle && author === ownHandle) continue;
+
+        // Skip promoted/ad tweets (they have a "Promoted" label)
+        const adLabel = await article.$('[data-testid="placementTracking"]');
+        if (adLabel) continue;
+
+        // Score for relevance
+        const score = scoreTweetRelevance(text, config.topic);
+        if (score >= minScore) {
+          collected.push({ article, text, author, score });
+        }
+      } catch { /* skip malformed articles */ }
+    }
+
+    // Scroll down for more tweets (except on the last pass)
+    if (pass < scrollPasses - 1) {
+      await page.evaluate(() => { (globalThis as any).scrollBy(0, (globalThis as any).innerHeight * 2); });
+      await page.waitForTimeout(2_500);
+    }
+  }
+
+  // Sort by score descending, return top N
+  const ranked = collected
+    .sort((a, b) => b.score - a.score)
+    .slice(0, maxResults);
+
+  console.log(
+    `[discover] Found ${ranked.length} relevant tweet(s) out of ${seen.size} scanned.`
+  );
+  ranked.forEach((t, i) =>
+    console.log(
+      `  ${i + 1}. @${t.author} (score: ${t.score.toFixed(2)}): "${t.text.slice(0, 60)}…"`
+    )
+  );
+
+  return ranked;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Feed discovery session (DISCOVER mode — no target handles needed)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Scrolls the home feed, finds the most relevant tweets, and replies to
+ * the top 2–3 using the same HITL + LLM pipeline as TARGET mode.
+ *
+ * Called by stealth_poster.ts when MODE=REPLY and TARGET_HANDLES is empty.
+ *
+ * @returns Array of strings to be appended to history.json
+ */
+export async function discoverFromFeed(
+  page: Page,
+  history: string[]
+): Promise<string[]> {
+  const sessionCount = Math.floor(Math.random() * 2) + 2; // 2 or 3
+
+  console.log('\n[discover] ─────────────────────────────────────────');
+  console.log('[discover] Mode    : Feed Discovery (no target handles)');
+  console.log(`[discover] Topic   : "${config.topic}"`);
+  console.log(`[discover] Max replies : ${sessionCount}`);
+  console.log('[discover] ─────────────────────────────────────────\n');
+
+  // Discover relevant tweets from the home feed
+  const candidates = await discoverRelevantTweets(page, 4, 0.05, sessionCount + 2);
+
+  if (candidates.length === 0) {
+    console.warn(
+      '[discover] No relevant tweets found on the home feed.\n' +
+      '           Try broadening your TOPIC or switching to TARGET mode.'
+    );
+    return [];
+  }
+
+  // Scroll back to top so article handles are still in the viewport
+  await page.evaluate(() => { (globalThis as any).scrollTo(0, 0); });
+  await page.waitForTimeout(1_500);
+
+  const results: string[] = [];
+  let sessionHistory = [...history];
+  const toReply = candidates.slice(0, sessionCount);
+
+  for (let i = 0; i < toReply.length; i++) {
+    const { article, author } = toReply[i]!;
+
+    // Re-scroll into view (the article handle may be off-screen after scroll-to-top)
+    try {
+      await article.scrollIntoViewIfNeeded();
+      await page.waitForTimeout(800);
+    } catch { /* article may have been replaced by React re-render — skip */ }
+
+    const result = await replyToTweet(page, article, author, sessionHistory);
+
+    if (result) {
+      results.push(result);
+      sessionHistory = [...sessionHistory, result];
+    }
+
+    // Inter-reply delay
+    if (i < toReply.length - 1) {
+      const waitMs =
+        INTER_ENGAGEMENT_MIN_MS +
+        Math.floor(Math.random() * (INTER_ENGAGEMENT_MAX_MS - INTER_ENGAGEMENT_MIN_MS));
+      console.log(`[discover] Waiting ${(waitMs / 1_000).toFixed(0)}s before next reply...\n`);
+      await new Promise<void>((resolve) => setTimeout(resolve, waitMs));
+    }
+  }
+
+  console.log(
+    `\n[discover] Session complete — ${results.length}/${toReply.length} replies sent.\n`
+  );
+  return results;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  Main engagement session orchestrator (TARGET mode)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Runs a full TARGET engagement session.
  *
  * Picks a random subset of `config.targetHandles` (2–3 per session),
  * navigates to each profile, finds the latest non-pinned tweet, and performs
