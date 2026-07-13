@@ -326,7 +326,7 @@ function scoreTweetRelevance(tweetText: string, topic: string): number {
 }
 
 interface DiscoveredTweet {
-  article: ElementHandle;
+  url: string;
   text: string;
   author: string;
   score: number;
@@ -341,7 +341,6 @@ async function discoverRelevantTweets(
   console.log('[discover] Scanning home timeline for relevant tweets...');
 
   // ── Step 1: Detect which article selector X is currently using ─────────────
-  // X periodically renames data-testid attributes. Try several known variants.
   const candidateArticleSelectors = [
     'article[data-testid="tweet"]',          // standard
     '[data-testid="tweet"]',                  // without article tag
@@ -367,7 +366,6 @@ async function discoverRelevantTweets(
   if (!foundAny) {
     console.warn('[discover] Feed did not populate. Trying "Latest" tab...');
     try {
-      // Switch to Latest tab — sometimes the For You feed loads differently
       await page.goto('https://x.com/home?f=live', { waitUntil: 'domcontentloaded', timeout: 20_000 });
       await page.waitForTimeout(3_000);
       for (const sel of candidateArticleSelectors) {
@@ -398,6 +396,20 @@ async function discoverRelevantTweets(
   const seen = new Set<string>();
   const collected: DiscoveredTweet[] = [];
 
+  // Helper to extract a tweet's URL
+  async function extractTweetUrl(article: ElementHandle): Promise<string> {
+    try {
+      const links = await article.$$('a');
+      for (const link of links) {
+        const href = await link.getAttribute('href');
+        if (href && href.includes('/status/')) {
+          return href.startsWith('http') ? href : `https://x.com${href}`;
+        }
+      }
+    } catch { /* ignore errors */ }
+    return '';
+  }
+
   // ── Step 3: Scroll and collect ────────────────────────────────────────────
   for (let pass = 0; pass < scrollPasses; pass++) {
     const articles = await page.$$(tweetSelector);
@@ -416,6 +428,10 @@ async function discoverRelevantTweets(
         }
         if (!text || seen.has(text)) continue;
         seen.add(text);
+
+        // Extract status URL — crucial to avoid stale DOM elements later
+        const tweetUrl = await extractTweetUrl(article);
+        if (!tweetUrl) continue;
 
         // Extract author handle
         let author = 'unknown';
@@ -437,7 +453,7 @@ async function discoverRelevantTweets(
         // Score for relevance — use a lower threshold so more tweets qualify
         const score = scoreTweetRelevance(text, config.topic);
         if (score >= minScore) {
-          collected.push({ article, text, author, score });
+          collected.push({ url: tweetUrl, text, author, score });
         }
       } catch { /* skip malformed articles */ }
     }
@@ -451,7 +467,6 @@ async function discoverRelevantTweets(
   // If nothing scored high enough, take any tweet (score > 0) as fallback
   if (collected.length === 0 && seen.size > 0) {
     console.log('[discover] No tweets met score threshold — relaxing filter to any tweet with topic overlap...');
-    // Re-scan with score >= 0 (any overlap at all)
     const articles = await page.$$(tweetSelector);
     for (const article of articles) {
       try {
@@ -459,6 +474,10 @@ async function discoverRelevantTweets(
         if (!textEl) continue;
         const text = (await textEl.innerText()).trim();
         if (!text) continue;
+
+        const tweetUrl = await extractTweetUrl(article);
+        if (!tweetUrl) continue;
+
         const score = scoreTweetRelevance(text, config.topic);
         if (score > 0) {
           let author = 'unknown';
@@ -466,7 +485,7 @@ async function discoverRelevantTweets(
             const userLink = await article.$('a[role="link"][href*="/"]');
             if (userLink) { const href = await userLink.getAttribute('href'); if (href) author = href.replace('/', '').toLowerCase(); }
           } catch { /* best-effort */ }
-          collected.push({ article, text, author, score });
+          collected.push({ url: tweetUrl, text, author, score });
         }
       } catch { /* skip */ }
     }
@@ -484,19 +503,117 @@ async function discoverRelevantTweets(
   return ranked;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
 
-//  Feed discovery session (DISCOVER mode — no target handles needed)
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Scrolls the home feed, finds the most relevant tweets, and replies to
- * the top 2–3 using the same HITL + LLM pipeline as TARGET mode.
- *
- * Called by stealth_poster.ts when MODE=REPLY and TARGET_HANDLES is empty.
- *
- * @returns Array of strings to be appended to history.json
+ * Navigates directly to a tweet status URL and posts a reply.
+ * This completely isolates the tweet from home timeline virtualization and avoids
+ * stale DOM ElementHandle references.
  */
+async function replyToTweetDirect(
+  page: Page,
+  tweetUrl: string,
+  targetText: string,
+  handle: string,
+  history: string[]
+): Promise<string | null> {
+  const preview = targetText.slice(0, 120) + (targetText.length > 120 ? '…' : '');
+  console.log(`\n[engage] Replying to @${handle} via direct URL:\n  "${preview}"\n`);
+
+  // Generate the contextual reply first
+  const webContext = await fetchLatestContext(config.topic);
+  const reply = await generateReply(targetText, webContext, history);
+
+  console.log(`\n[llm] Draft reply (${reply.length} chars):\n`);
+  console.log(`  ┌${'─'.repeat(60)}┐`);
+  const wrapped = reply.match(/.{1,58}/g) ?? [reply];
+  for (const line of wrapped) {
+    console.log(`  │ ${line.padEnd(58)} │`);
+  }
+  console.log(`  └${'─'.repeat(60)}┘\n`);
+
+  if (config.humanInTheLoop) {
+    const approved = await askYesNo(`[HITL] Send this reply to @${handle}?`);
+    if (!approved) {
+      console.log('[HITL] Reply skipped.\n');
+      return null;
+    }
+  } else {
+    console.log('[engage] HITL is disabled — auto-approving reply.');
+  }
+
+  // Navigate to status page directly
+  console.log(`[browser] Navigating directly to tweet: ${tweetUrl}`);
+  try {
+    await page.goto(tweetUrl, { waitUntil: 'domcontentloaded', timeout: 25_000 });
+    // Settle time
+    await page.waitForTimeout(3_000);
+  } catch (err) {
+    console.warn(`[engage] Failed to navigate to tweet status page: ${err}`);
+    return null;
+  }
+
+  // Locate the reply textarea on the status page
+  const replySelectors = [
+    '[data-testid="tweetTextarea_0"]',
+    '[data-testid^="tweetTextarea"]',
+    'div[contenteditable="true"][role="textbox"]',
+    'div.public-DraftEditor-content',
+    'div[contenteditable="true"]',
+  ];
+
+  let replyAreaSel = '';
+  for (const sel of replySelectors) {
+    try {
+      const el = await page.waitForSelector(sel, { timeout: 4_000 });
+      if (el) {
+        replyAreaSel = sel;
+        await humanClick(page, el);
+        break;
+      }
+    } catch { /* try next */ }
+  }
+
+  if (!replyAreaSel) {
+    console.warn('[engage] Could not locate the reply compose area on status page.');
+    return null;
+  }
+
+  await gaussianDelay(600, 100, 400, 1_200);
+
+  // Type the reply
+  console.log(`[browser] Typing reply...`);
+  await typeLikeAHuman(page, replyAreaSel, reply);
+  await gaussianDelay(1_200, 200, 700, 2_500);
+
+  // Submit the reply
+  const submitSelectors = [
+    '[data-testid="tweetButtonInline"]',
+    '[data-testid="tweetButton"]',
+    '[aria-label="Post all"]',
+    '[aria-label="Reply"]',
+  ];
+
+  for (const sel of submitSelectors) {
+    const btn = await page.$(sel);
+    if (btn) {
+      const disabled = await btn.getAttribute('aria-disabled');
+      if (disabled === 'true') {
+        console.warn('[engage] Reply submit button is disabled.');
+        return null;
+      }
+      await gaussianDelay(500, 80, 300, 900);
+      await humanClick(page, btn);
+      console.log(`✅ Reply sent to @${handle}!\n`);
+      return `[REPLY @${handle}] ${reply}`;
+    }
+  }
+
+  console.warn('[engage] Reply submit button not found.');
+  return null;
+}
+
 export async function discoverFromFeed(
   page: Page,
   history: string[]
@@ -520,31 +637,21 @@ export async function discoverFromFeed(
     return [];
   }
 
-  // Scroll back to top so article handles are still in the viewport
-  await page.evaluate(() => { (globalThis as any).scrollTo(0, 0); });
-  await page.waitForTimeout(1_500);
-
   const results: string[] = [];
   let sessionHistory = [...history];
   const toReply = candidates.slice(0, sessionCount);
 
   for (let i = 0; i < toReply.length; i++) {
-    const { article, author } = toReply[i]!;
+    const { url, text, author } = toReply[i]!;
 
-    // Re-scroll into view (the article handle may be off-screen after scroll-to-top)
-    try {
-      await article.scrollIntoViewIfNeeded();
-      await page.waitForTimeout(800);
-    } catch { /* article may have been replaced by React re-render — skip */ }
-
-    const result = await replyToTweet(page, article, author, sessionHistory);
+    const result = await replyToTweetDirect(page, url, text, author, sessionHistory);
 
     if (result) {
       results.push(result);
       sessionHistory = [...sessionHistory, result];
     }
 
-    // Inter-reply delay
+    // Inter-reply delay (skip after last)
     if (i < toReply.length - 1) {
       const waitMs =
         INTER_ENGAGEMENT_MIN_MS +
@@ -559,6 +666,7 @@ export async function discoverFromFeed(
   );
   return results;
 }
+
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Main engagement session orchestrator (TARGET mode)
