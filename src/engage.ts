@@ -234,11 +234,15 @@ async function replyToTweet(
   }
   console.log(`  └${'─'.repeat(60)}┘\n`);
 
-  // ── HITL gate — always enforced for replies regardless of config ───────────
-  const approved = await askYesNo(`[HITL] Send this reply to @${handle}?`);
-  if (!approved) {
-    console.log('[HITL] Reply skipped.\n');
-    return null;
+  // ── HITL gate — enforced if humanInTheLoop is enabled ──────────────────────
+  if (config.humanInTheLoop) {
+    const approved = await askYesNo(`[HITL] Send this reply to @${handle}?`);
+    if (!approved) {
+      console.log('[HITL] Reply skipped.\n');
+      return null;
+    }
+  } else {
+    console.log('[engage] HITL is disabled — auto-approving reply.');
   }
 
   // ── Click the reply button on this specific article ───────────────────────
