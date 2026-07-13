@@ -328,11 +328,6 @@ interface DiscoveredTweet {
   score: number;
 }
 
-/**
- * Scrolls the home timeline to discover tweets relevant to config.topic.
- * Performs `scrollPasses` scroll steps, collecting all visible tweet articles.
- * Returns up to `maxResults` highest-scoring non-ad, non-own tweets.
- */
 async function discoverRelevantTweets(
   page: Page,
   scrollPasses: number = 4,
@@ -341,10 +336,54 @@ async function discoverRelevantTweets(
 ): Promise<DiscoveredTweet[]> {
   console.log('[discover] Scanning home timeline for relevant tweets...');
 
-  // Get our own handle so we skip our own posts
+  // ── Step 1: Detect which article selector X is currently using ─────────────
+  // X periodically renames data-testid attributes. Try several known variants.
+  const candidateArticleSelectors = [
+    'article[data-testid="tweet"]',          // standard
+    '[data-testid="tweet"]',                  // without article tag
+    'article[role="article"]',               // semantic fallback
+    '[data-testid="cellInnerDiv"] article',  // wrapped variant
+    'article',                               // broadest fallback
+  ];
+
+  let tweetSelector = 'article[data-testid="tweet"]'; // default
+  let foundAny = false;
+
+  console.log('[discover] Waiting for feed to populate...');
+  for (const sel of candidateArticleSelectors) {
+    try {
+      await page.waitForSelector(sel, { timeout: 6_000 });
+      tweetSelector = sel;
+      foundAny = true;
+      console.log(`[discover] Feed ready — using selector: "${sel}"`);
+      break;
+    } catch { /* try next */ }
+  }
+
+  if (!foundAny) {
+    console.warn('[discover] Feed did not populate. Trying "Latest" tab...');
+    try {
+      // Switch to Latest tab — sometimes the For You feed loads differently
+      await page.goto('https://x.com/home?f=live', { waitUntil: 'domcontentloaded', timeout: 20_000 });
+      await page.waitForTimeout(3_000);
+      for (const sel of candidateArticleSelectors) {
+        try {
+          await page.waitForSelector(sel, { timeout: 5_000 });
+          tweetSelector = sel;
+          foundAny = true;
+          console.log(`[discover] Latest feed ready — using selector: "${sel}"`);
+          break;
+        } catch { /* try next */ }
+      }
+    } catch { /* best-effort */ }
+  }
+
+  // Extra settle time after feed detection
+  await page.waitForTimeout(1_500);
+
+  // ── Step 2: Get own handle to skip own posts ───────────────────────────────
   let ownHandle = '';
   try {
-    // The logged-in user's handle appears in the sidebar nav profile link
     const profileLink = await page.$('a[data-testid="AppTabBar_Profile_Link"]');
     if (profileLink) {
       const href = await profileLink.getAttribute('href');
@@ -355,17 +394,22 @@ async function discoverRelevantTweets(
   const seen = new Set<string>();
   const collected: DiscoveredTweet[] = [];
 
+  // ── Step 3: Scroll and collect ────────────────────────────────────────────
   for (let pass = 0; pass < scrollPasses; pass++) {
-    // Collect all currently visible tweet articles
-    const articles = await page.$$('article[data-testid="tweet"]');
-    console.log(`[discover] Pass ${pass + 1}/${scrollPasses} — ${articles.length} articles visible`);
+    const articles = await page.$$(tweetSelector);
+    console.log(`[discover] Pass ${pass + 1}/${scrollPasses} — ${articles.length} articles visible (selector: "${tweetSelector}")`);
 
     for (const article of articles) {
       try {
-        // Extract tweet text
-        const textEl = await article.$('[data-testid="tweetText"]');
-        if (!textEl) continue;
-        const text = (await textEl.innerText()).trim();
+        // Extract tweet text — try both old and new data-testid variants
+        let text = '';
+        for (const textSel of ['[data-testid="tweetText"]', '[lang]', 'div[dir="auto"]']) {
+          const textEl = await article.$(textSel);
+          if (textEl) {
+            const t = (await textEl.innerText()).trim();
+            if (t.length > 20) { text = t; break; }
+          }
+        }
         if (!text || seen.has(text)) continue;
         seen.add(text);
 
@@ -379,14 +423,14 @@ async function discoverRelevantTweets(
           }
         } catch { /* best-effort */ }
 
-        // Skip our own posts
+        // Skip own posts
         if (ownHandle && author === ownHandle) continue;
 
-        // Skip promoted/ad tweets (they have a "Promoted" label)
+        // Skip promoted/ad tweets
         const adLabel = await article.$('[data-testid="placementTracking"]');
         if (adLabel) continue;
 
-        // Score for relevance
+        // Score for relevance — use a lower threshold so more tweets qualify
         const score = scoreTweetRelevance(text, config.topic);
         if (score >= minScore) {
           collected.push({ article, text, author, score });
@@ -394,31 +438,50 @@ async function discoverRelevantTweets(
       } catch { /* skip malformed articles */ }
     }
 
-    // Scroll down for more tweets (except on the last pass)
     if (pass < scrollPasses - 1) {
       await page.evaluate(() => { (globalThis as any).scrollBy(0, (globalThis as any).innerHeight * 2); });
       await page.waitForTimeout(2_500);
     }
   }
 
-  // Sort by score descending, return top N
+  // If nothing scored high enough, take any tweet (score > 0) as fallback
+  if (collected.length === 0 && seen.size > 0) {
+    console.log('[discover] No tweets met score threshold — relaxing filter to any tweet with topic overlap...');
+    // Re-scan with score >= 0 (any overlap at all)
+    const articles = await page.$$(tweetSelector);
+    for (const article of articles) {
+      try {
+        const textEl = await article.$('[data-testid="tweetText"]');
+        if (!textEl) continue;
+        const text = (await textEl.innerText()).trim();
+        if (!text) continue;
+        const score = scoreTweetRelevance(text, config.topic);
+        if (score > 0) {
+          let author = 'unknown';
+          try {
+            const userLink = await article.$('a[role="link"][href*="/"]');
+            if (userLink) { const href = await userLink.getAttribute('href'); if (href) author = href.replace('/', '').toLowerCase(); }
+          } catch { /* best-effort */ }
+          collected.push({ article, text, author, score });
+        }
+      } catch { /* skip */ }
+    }
+  }
+
   const ranked = collected
     .sort((a, b) => b.score - a.score)
     .slice(0, maxResults);
 
-  console.log(
-    `[discover] Found ${ranked.length} relevant tweet(s) out of ${seen.size} scanned.`
-  );
+  console.log(`[discover] Found ${ranked.length} relevant tweet(s) out of ${seen.size} scanned.`);
   ranked.forEach((t, i) =>
-    console.log(
-      `  ${i + 1}. @${t.author} (score: ${t.score.toFixed(2)}): "${t.text.slice(0, 60)}…"`
-    )
+    console.log(`  ${i + 1}. @${t.author} (score: ${t.score.toFixed(2)}): "${t.text.slice(0, 60)}…"`)
   );
 
   return ranked;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+
 //  Feed discovery session (DISCOVER mode — no target handles needed)
 // ─────────────────────────────────────────────────────────────────────────────
 
