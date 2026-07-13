@@ -259,9 +259,49 @@ async function openComposeBox(page: Page): Promise<string> {
     }
   }
 
+  // ── Strategy 3: navigate directly to /compose/post URL ───────────────────
+  // Most reliable fallback — works regardless of home feed layout changes.
+  try {
+    console.log('[browser] Strategy 3: navigating directly to https://x.com/compose/post ...');
+    await page.goto('https://x.com/compose/post', {
+      waitUntil: 'domcontentloaded',
+      timeout: 20_000,
+    });
+    await page.waitForTimeout(2_000);
+    const found3 = await waitForTextarea(12_000);
+    if (found3) return found3;
+    console.log('[browser] No textarea at /compose/post either. Trying keyboard shortcut...');
+  } catch {
+    console.warn('[browser] /compose/post navigation failed. Trying keyboard shortcut...');
+  }
+
+  // ── Strategy 4: keyboard shortcut 'n' ────────────────────────────────────
+  // X's built-in hotkey to open compose — completely DOM-independent.
+  try {
+    // Return to home first so the shortcut is captured by X's global listener
+    await page.goto('https://x.com/home', { waitUntil: 'domcontentloaded', timeout: 20_000 });
+    await page.waitForTimeout(2_500);
+    console.log('[browser] Strategy 4: pressing keyboard shortcut "n" ...');
+    await page.keyboard.press('n');
+    await page.waitForTimeout(1_500);
+    const found4 = await waitForTextarea(12_000);
+    if (found4) return found4;
+  } catch {
+    console.warn('[browser] Keyboard shortcut "n" approach failed.');
+  }
+
+  // ── Debug screenshot — capture the page state for diagnosis ──────────────
+  try {
+    const screenshotPath = path.join(process.cwd(), 'auth', 'debug_compose_failure.png');
+    await page.screenshot({ path: screenshotPath, fullPage: false });
+    console.log(`\n[debug] Screenshot saved → ${screenshotPath}`);
+    console.log('[debug] Open that file to see exactly what X is displaying.\n');
+  } catch { /* best-effort */ }
+
   throw new Error(
-    '[browser] Could not locate the tweet compose area. ' +
-      'X may have changed its DOM. Update the selectors in openComposeBox().'
+    '[browser] Could not locate the tweet compose area after 4 strategies.\n' +
+    '         Check auth/debug_compose_failure.png to see the current X DOM.\n' +
+    '         If X changed their UI, update selectors in openComposeBox().'
   );
 }
 
