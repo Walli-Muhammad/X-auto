@@ -23,7 +23,7 @@ import { Page, ElementHandle } from 'playwright';
 import { config } from './config';
 import { generateReply } from './llm';
 import { fetchLatestContext } from './search';
-import { gaussianDelay, typeLikeAHuman } from './humanizer';
+import { gaussianDelay, typeLikeAHuman, humanClick } from './humanizer';
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  Constants
@@ -172,14 +172,15 @@ async function retweetTweet(
     return null;
   }
 
-  await retweetBtn.click();
+  await humanClick(page, retweetBtn);   // ← curved mouse movement
   await gaussianDelay(700, 120, 400, 1_300);
 
   // X shows a popup with "Repost" and "Quote" options
   try {
     await page.waitForSelector('[data-testid="retweetConfirm"]', { timeout: 6_000 });
     await gaussianDelay(500, 80, 300, 900);
-    await page.click('[data-testid="retweetConfirm"]');
+    const confirmBtn = await page.$('[data-testid="retweetConfirm"]');
+    await humanClick(page, confirmBtn); // ← curved mouse movement
     console.log(`✅ Retweeted @${handle}!\n`);
 
     // Capture the tweet text for history (best-effort — may be empty for media-only posts)
@@ -247,7 +248,7 @@ async function replyToTweet(
     return null;
   }
 
-  await replyBtn.click();
+  await humanClick(page, replyBtn);   // ← curved mouse movement
   await gaussianDelay(900, 180, 500, 1_800);
 
   // Wait for the reply compose textarea to appear
@@ -280,7 +281,7 @@ async function replyToTweet(
         return null;
       }
       await gaussianDelay(500, 80, 300, 900);
-      await btn.click();
+      await humanClick(page, btn);    // ← curved mouse movement
       console.log(`✅ Reply sent to @${handle}!\n`);
       return `[REPLY @${handle}] ${reply}`;
     }

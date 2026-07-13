@@ -36,7 +36,7 @@ import { chromium, Browser, BrowserContext, Page } from 'playwright';
 import { config, assertSessionExists } from './config';
 import { generateTweet } from './llm';
 import { loadHistory, isDuplicate, recordTweet } from './history';
-import { gaussianDelay, typeLikeAHuman, lurkOverhead } from './humanizer';
+import { gaussianDelay, typeLikeAHuman, lurkOverhead, humanClick } from './humanizer';
 import { fetchLatestContext } from './search';
 import { runEngagementSession, discoverFromFeed } from './engage';
 
@@ -131,7 +131,7 @@ async function launchBrowser(): Promise<{
     viewport,
     userAgent:
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-      '(KHTML, like Gecko) Chrome/125.0.0.0 Safari/537.36',
+      '(KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
     locale: 'en-US',
     timezoneId: Intl.DateTimeFormat().resolvedOptions().timeZone,
     // Mask webdriver flag to avoid trivial bot detection
@@ -222,7 +222,7 @@ async function openComposeBox(page: Page): Promise<string> {
   if (found1) {
     const el = await page.$(found1);
     if (el) {
-      await el.click();
+      await humanClick(page, el);
       await gaussianDelay(400, 80, 250, 700);
       return found1;
     }
@@ -243,7 +243,7 @@ async function openComposeBox(page: Page): Promise<string> {
       if (!btn) continue;
 
       console.log(`[browser] Clicking compose button: ${btnSel}`);
-      await btn.click();
+      await humanClick(page, btn);   // ← human curved mouse path
 
       // Allow the compose modal/drawer to animate open
       await page.waitForTimeout(1_500);
@@ -288,7 +288,7 @@ async function submitTweet(page: Page): Promise<void> {
         );
       }
       console.log(`[browser] Clicking post button: ${sel}`);
-      await btn.click();
+      await humanClick(page, btn);   // ← human curved mouse path
       return;
     }
   }
